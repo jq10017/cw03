@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'task.dart';
+import 'database_helper.dart';
 
 void main() {
   runApp(const MyApp());
@@ -10,20 +12,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'To-Do List',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-      ),
+      title: 'To-Do List (SQLite)',
+      theme: ThemeData(primarySwatch: Colors.blue),
       home: const TaskListScreen(),
     );
   }
-}
-
-class Task {
-  String name;
-  bool isCompleted;
-
-  Task({required this.name, this.isCompleted = false});
 }
 
 class TaskListScreen extends StatefulWidget {
@@ -34,49 +27,58 @@ class TaskListScreen extends StatefulWidget {
 }
 
 class _TaskListScreenState extends State<TaskListScreen> {
-  final List<Task> _tasks = [];
   final TextEditingController _taskController = TextEditingController();
+  List<Task> _tasks = [];
+  final dbHelper = DatabaseHelper.instance;
 
-  void _addTask() {
-    String taskName = _taskController.text.trim();
-    if (taskName.isNotEmpty) {
-      setState(() {
-        _tasks.add(Task(name: taskName));
-      });
-      _taskController.clear();
-    }
+  @override
+  void initState() {
+    super.initState();
+    _loadTasks();
   }
 
-  void _toggleTask(int index) {
-    setState(() {
-      _tasks[index].isCompleted = !_tasks[index].isCompleted;
-    });
+  Future<void> _loadTasks() async {
+    final tasks = await dbHelper.getTasks();
+    setState(() => _tasks = tasks);
   }
 
-  void _deleteTask(int index) {
-    setState(() {
-      _tasks.removeAt(index);
-    });
+  Future<void> _addTask() async {
+    String name = _taskController.text.trim();
+    if (name.isEmpty) return;
+
+    Task newTask = Task(name: name);
+    await dbHelper.insertTask(newTask);
+    _taskController.clear();
+    _loadTasks(); 
+  }
+
+  Future<void> _toggleTask(Task task) async {
+    task.isCompleted = !task.isCompleted;
+    await dbHelper.updateTask(task);
+    _loadTasks();
+  }
+
+  Future<void> _deleteTask(int id) async {
+    await dbHelper.deleteTask(id);
+    _loadTasks();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Task List'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('Task List (Saved Locally)')),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            
             Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _taskController,
                     decoration: const InputDecoration(
-                      labelText: 'Enter task name',
+                      labelText: 'Enter a task',
                       border: OutlineInputBorder(),
                     ),
                   ),
@@ -90,13 +92,11 @@ class _TaskListScreenState extends State<TaskListScreen> {
             ),
             const SizedBox(height: 20),
 
+            // Task list
             Expanded(
               child: _tasks.isEmpty
                   ? const Center(
-                      child: Text(
-                        'No tasks yet! Add one above.',
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
-                      ),
+                      child: Text('No tasks found!'),
                     )
                   : ListView.builder(
                       itemCount: _tasks.length,
@@ -107,7 +107,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
                           child: ListTile(
                             leading: Checkbox(
                               value: task.isCompleted,
-                              onChanged: (_) => _toggleTask(index),
+                              onChanged: (_) => _toggleTask(task),
                             ),
                             title: Text(
                               task.name,
@@ -119,7 +119,7 @@ class _TaskListScreenState extends State<TaskListScreen> {
                             ),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () => _deleteTask(index),
+                              onPressed: () => _deleteTask(task.id!),
                             ),
                           ),
                         );
